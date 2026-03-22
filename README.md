@@ -46,6 +46,42 @@ The daemon pattern is about **detaching from the terminal**, not about changing 
 
 Implement the classic daemonization pattern: fork once, call `setsid()` to create a new session and detach from the controlling terminal, then fork again to prevent reacquisition of a terminal. Each step exists for a specific reason — we cover why.
 
+#### Key Concepts
+
+**Sessions and Process Groups**
+
+A session is the OS's grouping of everything that belongs to one terminal window. When a terminal opens, the shell becomes the **session leader**. Every command launched from that shell joins the session. When the terminal closes, the OS sends `SIGHUP` to the session, killing all its processes.
+
+A process group is a subset of a session — related processes (e.g., a pipeline like `ls | grep foo`) grouped together so they can receive signals as a unit.
+
+**The Controlling Terminal (TTY)**
+
+The controlling terminal is the terminal device attached to a session. It provides `stdin`/`stdout` and is the channel through which signals like `SIGHUP` reach the session's processes. A TTY value of `??` in `ps` output indicates no controlling terminal is attached.
+
+**`setsid()` System Call**
+
+`setsid()` creates a new session with no controlling terminal. The calling process becomes the session leader and sole member. This is what detaches a process from the original terminal — closing that terminal no longer affects it.
+
+**The Double Fork Pattern**
+
+The full daemonization sequence:
+
+1. **First `fork()` + parent exits** — the child is not a process group leader, which is a prerequisite for calling `setsid()`. The shell gets its prompt back.
+2. **`setsid()`** — the child creates a new session. It is now the session leader, detached from the original terminal. However, as session leader it *could* reacquire a controlling terminal by opening one.
+3. **Second `fork()` + session leader exits** — the grandchild inherits the session but is not the session leader. Only session leaders can acquire a controlling terminal, so the grandchild is permanently detached.
+
+```
+Terminal Session (still alive, owned by the shell)
+  └── shell (session leader)
+
+New Session (leaderless, no controlling terminal)
+  └── grandchild = the daemon
+```
+
+**TTY vs. Session Leader**
+
+These are independent concepts. TTY (`??`) means no terminal is attached. An absent session leader means no process can attach one. The daemon has neither — no terminal, and no way to get one.
+
 ### Stage 3: File Descriptor Management
 
 Close `stdin`, `stdout`, and `stderr` and redirect them to `/dev/null`. Set up file-based logging. This is what makes a daemon truly independent of any terminal.
