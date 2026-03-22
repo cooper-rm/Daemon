@@ -127,6 +127,57 @@ With no terminal, a daemon communicates through log files. Key practices:
 
 Write the daemon's PID to a file for process management. Implement signal handlers for `SIGTERM` (clean shutdown) and `SIGHUP` (configuration reload). Build a CLI interface to start and stop the daemon.
 
+#### Key Concepts
+
+**PID Files**
+
+A daemon writes its PID to a known file path (e.g., `/var/tmp/daemon.pid`) at startup. This serves two purposes:
+
+1. **Discovery** — any process or script can read the file to find the daemon's PID
+2. **Instance locking** — if the PID file exists and the process is alive, a second instance should not start
+
+The PID file must be removed on clean shutdown to avoid stale entries.
+
+**Signals**
+
+Signals are the OS mechanism for sending asynchronous notifications to a running process. A process registers handler functions that execute when a signal arrives.
+
+| Signal    | Default Behavior | Daemon Convention |
+|-----------|-----------------|-------------------|
+| `SIGTERM` | Terminate       | Graceful shutdown — clean up resources, remove PID file, exit |
+| `SIGHUP`  | Terminate       | Reload configuration without restarting |
+| `SIGINT`  | Terminate       | Ctrl+C (not relevant for daemons with no terminal) |
+| `SIGKILL` | Terminate       | Cannot be caught — immediate forced kill |
+
+**Signal Handler Safety**
+
+Signal handlers interrupt the process at an arbitrary point — potentially in the middle of `malloc`, `printf`, or any other function. Calling those same functions from inside the handler can cause deadlocks or corruption. The safe pattern:
+
+1. The handler sets a flag (`volatile sig_atomic_t`)
+2. The main loop checks the flag and acts on it
+3. `volatile` prevents the compiler from caching the flag in a register
+4. `sig_atomic_t` guarantees the flag is read and written atomically
+
+**`sigaction()` vs `signal()`**
+
+`sigaction()` is the portable, reliable way to register signal handlers. `signal()` has platform-dependent behavior (e.g., some systems reset the handler after it fires). Always prefer `sigaction()`.
+
+**Controlling the Daemon**
+
+```bash
+# Read the PID
+cat /var/tmp/daemon.pid
+
+# Send SIGHUP (reload)
+kill -HUP $(cat /var/tmp/daemon.pid)
+
+# Send SIGTERM (graceful shutdown)
+kill $(cat /var/tmp/daemon.pid)
+
+# Send SIGKILL (force kill — last resort)
+kill -9 $(cat /var/tmp/daemon.pid)
+```
+
 ### Stage 5: Work Loop
 
 Give the daemon a task — a loop that performs observable work (e.g., directory watching or file-based job processing) to confirm correct behavior.
