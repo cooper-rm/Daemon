@@ -86,6 +86,43 @@ These are independent concepts. TTY (`??`) means no terminal is attached. An abs
 
 Close `stdin`, `stdout`, and `stderr` and redirect them to `/dev/null`. Set up file-based logging. This is what makes a daemon truly independent of any terminal.
 
+#### Key Concepts
+
+**File Descriptors**
+
+Every open file, socket, or device is represented by an integer called a file descriptor. The first three are reserved by convention:
+
+| FD | Name     | Default Target |
+|----|----------|----------------|
+| 0  | `stdin`  | keyboard (terminal) |
+| 1  | `stdout` | screen (terminal) |
+| 2  | `stderr` | screen (terminal) |
+
+After detaching from the terminal, these descriptors are dangling — they still reference a terminal that may no longer exist. Writing to them is undefined behavior.
+
+**`dup2()` System Call**
+
+`dup2(source_fd, target_fd)` replaces `target_fd` with a copy of `source_fd`. This is how we rewire the standard file descriptors:
+
+```
+Before (dangling):            After (redirected):
+  0 (stdin)  → terminal        0 (stdin)  → /dev/null
+  1 (stdout) → terminal        1 (stdout) → /var/tmp/daemon.log
+  2 (stderr) → terminal        2 (stderr) → /var/tmp/daemon.log
+```
+
+**`/dev/null`**
+
+A special device that discards all writes and returns EOF on reads. Redirecting `stdin` to `/dev/null` ensures the daemon never blocks waiting for input that will never come.
+
+**Daemon Logging**
+
+With no terminal, a daemon communicates through log files. Key practices:
+
+- Use `O_APPEND` when opening the log file so multiple writes don't overwrite each other
+- Call `fflush()` after each write to ensure messages are persisted immediately — if the daemon crashes, unbuffered messages are lost
+- Timestamp every message, since there is no interactive context to infer when events occurred
+
 ### Stage 4: PID File and Signal Handling
 
 Write the daemon's PID to a file for process management. Implement signal handlers for `SIGTERM` (clean shutdown) and `SIGHUP` (configuration reload). Build a CLI interface to start and stop the daemon.
