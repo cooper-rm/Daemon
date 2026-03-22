@@ -178,13 +178,32 @@ kill $(cat /var/tmp/daemon.pid)
 kill -9 $(cat /var/tmp/daemon.pid)
 ```
 
-### Stage 5: Work Loop
+## Usage
 
-Give the daemon a task — a loop that performs observable work (e.g., directory watching or file-based job processing) to confirm correct behavior.
+```bash
+# Build
+gcc -o daemon daemon.c
 
-### Stage 6: Lifecycle Review
+# Start the daemon
+./daemon
 
-Trace the full daemon lifecycle from start to stop. Compare the implementation to how production daemons and service managers (e.g., `systemd`) operate.
+# View logs
+tail -f /var/tmp/daemon.log
+
+# Reload configuration
+kill -HUP $(cat /var/tmp/daemon.pid)
+
+# Stop the daemon
+kill $(cat /var/tmp/daemon.pid)
+```
+
+## Files
+
+| File | Purpose |
+|------|---------|
+| `daemon.c` | Complete daemon implementation |
+| `/var/tmp/daemon.pid` | PID file (created at runtime) |
+| `/var/tmp/daemon.log` | Log file (created at runtime) |
 
 ## Requirements
 
